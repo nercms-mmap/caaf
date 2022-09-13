@@ -1,75 +1,43 @@
-# CAAF: Confidence-Aware Active Feedback
+# Confidence-Aware Active Feedback for Interactive Instance Search
 
 <!--正式发表后修改原文链接-->
 This repo is the official implementation of ["Confidence-Aware Active Feedback for Interactive Instance Search"](https://arxiv.org/abs/2110.12255) by Yue Zhang, Chao Liang and Longxiang Jiang.
 
-## Introduction
+## Abstract
+Online relevance feedback (RF) is widely utilized in instance search (INS) tasks to further refine imperfect ranking results, but it often has low interaction efficiency. The active learning (AL) technique addresses this problem by selecting valuable feedback candidates. However, mainstream AL methods require an initial labeled set for a cold start and are often computationally complex to solve. Therefore, they cannot fully satisfy the requirements for online RF in interactive INS tasks. To address this issue, we propose a confidence-aware active feedback method (CAAF) that is specifically designed for online RF in interactive INS tasks. Inspired by the explicit difficulty modeling scheme in self-paced learning, CAAF utilizes a pairwise manifold ranking loss to evaluate the ranking confidence of each unlabeled sample. The ranking confidence improves not only the interaction efficiency by indicating valuable feedback candidates but also the ranking quality by modulating the diffusion weights in manifold ranking. In addition, we design two acceleration strategies, an approximate optimization scheme and a top-K search scheme, to reduce the computational complexity of CAAF. Extensive experiments on both image INS tasks and video INS tasks searching for buildings, landscapes, persons, and human behaviors demonstrate the effectiveness of the proposed method. Notably, in the real-world, large-scale video INS task of NIST TRECVID 2021, CAAF uses 25% fewer feedback samples to achieve a performance that is nearly equivalent to the champion solution. Moreover, with the same number of feedback samples, CAAF's mAP is 51.9%, significantly surpassing the champion solution by 5.9%.
 
-CAAF is specifically designed for interactive instance search (INS) tasks to improve the interaction efficiency by actively selecting the most valuable samples for relevance feedback. 
+## Approach
 
-![Alt](./assets/framework.png)
+<div align="center">
+  <img width="100%" src="./assets/framework.png">
+</div>
 
-Inspired by the explicit difficulty modeling scheme in self-paced learning, CAAF utilizes a pairwise manifold ranking loss to evaluate the ranking confidence of each unlabeled sample. The ranking confidence improves not only the interaction efficiency by indicating valuable feedback candidates but also the ranking quality by modulating the diffusion weights in manifold ranking. In addition, we design two acceleration strategies, an approximate optimization scheme and a top-$K$ search scheme, to reduce the computational complexity of CAAF. 
+## Example
 
-Compared with existing active learning methods, CAAF gains better performance in INS tasks and takes less time to solve. Notably, in the real-world, large-scale video INS task of NIST TRECVID 2021, CAAF uses 25% fewer feedback samples to achieve a performance that is nearly equivalent to the champion solution. Moreover, with the same number of feedback samples, CAAF’s mAP is 51.9%, significantly surpassing the champion solution by 5.9%.
+We provide the preprocessed data of Oxford5k, Holidays and CUHK03 on [GoogleDrive](https://drive.google.com/drive/folders/1jUczrybe9i5NeRJjpWxNBb1Yo5ry6dDH?usp=sharing) and [Baiduyun](https://pan.baidu.com/s/1eL1Pp3FhNzUxSQzbCY0cZw?pwd=d2t6), please put them (`*.mat`) into the `data/` folder.
 
-## Requirements
-
-    python 3.8.12
-    numpy 1.21.4
-    torch 1.10.0+cu113
-
-## Usage
-
-``` python
-import numpy as np
-from caaf import CAAF
-
-'''
-all_idx: the original indices of the top-K samples in the gallery.
-all_init_rank: the inital rankings of all samples in the gallery.
-all_W: the affinity matrices computed with the queries and their top-K candidates.
-tot_query_num: the number of queries.
-tot_gallery_num: the size of the original gallery set (N).
-tot_fb_round: the the maximum round of feedback.
-fb_num: the number of feedback samples per round.
-'''
-
-dist_mat = np.zeros((tot_query_num,tot_gallery_num,tot_fb_round)) # the final distance
-
-# for each query
-for i in range(0, tot_query_num):
-
-    # prepare data for the i-th query
-    idx = all_idx[i,:] # (K,)
-    init_rank = all_init_rank[i,:] # (N,)
-    W = all_W[i,:,:] # (K+1,K+1)
-
-    # construct the model
-    model = CAAF(W)
-
-    # for each round
-    for j in range(0, tot_fb_round):
-
-        # solve CAAF
-        temp_f = model.optimize()
-
-        # collect ranking scores
-        top_f = temp_f[0:K]
-        f_idx = np.argsort(-top_f)
-        rank_f = np.argsort(f_idx)
-        init_rank[idx] = rank_f # only the top-K samples in the inital ranking list are updated
-        dist_mat[i,:,j] = init_rank # for simplicity, we take the ranking as the distance 
-
-        # collect feedback suggestions
-        fb_id = model.select(fb_num)
-        ori_id = idx[fb_id] # convert the index to the original index
-        fb_score = obtain_fb_score(ori_id) # please implemet this portal according to your own system
-
-        # update the parameters
-        model.update(fb_id,fb_score)
-
+You can test CAAF on Oxford5k with default settings using the following code:
 ```
+pip install requirements.txt
+cd code
+python main.py
+```
+
+You can also test on Holidays and CUHK03 with other parameters by modifying the following lines in `main.py`:
+```
+dataset = 'oxford5k' #['oxford5k','holidays','cuhk03']
+params = init_params(dataset=dataset,t=5,q=5,k=300,alpha=1e-2,method="CAAF")
+```
+
+## Results
+
+|  T  | Holidays | Oxford5k | CUHK03 |
+|:---:|:--------:|:--------:|:------:|
+|  0  |   67.14  |   43.19  |  53.90 |
+|  1  |   79.83  |   50.75  |  72.17 |
+|  2  |   84.02  |   55.78  |  85.55 |
+|  3  |   86.21  |   59.46  |  89.97 |
+|  4  |   87.46  |   61.51  |  91.33 |
 
 ## Citation
 

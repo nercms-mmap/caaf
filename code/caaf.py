@@ -1,24 +1,33 @@
 import numpy as np
 import torch
 
+torch.set_default_tensor_type(torch.DoubleTensor)
+
 class CAAF:
     def __init__(self,W,alpha=1e-2):
         torch.set_default_tensor_type(torch.DoubleTensor)
-        n = W.shape[0] 
-        self.alpha = alpha # the balancing parameter in manifold ranking loss
-        self.W = torch.from_numpy(W).cuda() # the affinity matrix
-        
-        # initalize ranking scores with W
+        self.alpha = alpha # balancing parameter in manifold ranking loss
+        if torch.cuda.is_available():
+            self.W = torch.from_numpy(W).cuda()
+        else:
+            self.W = torch.from_numpy(W)
         f = self.W[:,-1]
-        f = f.reshape((n,1))
-        self.f = (f - torch.min(f))/(torch.max(f)-torch.min(f))
 
         # take the probe as a specially labeled sample
-        self.labeled_gallery_set = np.array([n-1]) # probe index: n
-        self.unlabeled_gallery_set = np.arange(n-1) # gallery index: 0 ~ n-1
-        self.v = torch.zeros((n,1)).cuda() # confidence scores
+        m = W.shape[0]
+        f = f.reshape((m,1))
+        self.f = (f - torch.min(f))/(torch.max(f)-torch.min(f))
+        self.labeled_gallery_set = np.array([m-1]) # probe index: m
+        self.unlabeled_gallery_set = np.arange(m-1) # gallery index: 0 ~ m-1
+        if torch.cuda.is_available():
+            self.v = torch.zeros((m,1)).cuda()
+        else:
+            self.v = torch.zeros((m,1))
         self.v[-1] = 1
-        self.y = torch.zeros((n,1)).cuda() # reference scores
+        if torch.cuda.is_available():
+            self.y = torch.zeros((m,1)).cuda()
+        else:
+            self.y = torch.zeros((m,1))
         self.y[-1] = 1
 
         # to accelerate inverse calculation
@@ -35,7 +44,10 @@ class CAAF:
         # enforce the ranking scores of labled samples approach their feedback scores
         alpha = self.alpha*np.ones(n)
         alpha[labeled_gallery_set] = 1e6
-        alpha = torch.from_numpy(alpha).cuda()
+        if torch.cuda.is_available():
+            alpha = torch.from_numpy(alpha).cuda()
+        else:
+            alpha = torch.from_numpy(alpha)
 
         V_tilde = torch.tile(v,(1,n)) + torch.tile(v.t(),(n,1))
         W_tilde = V_tilde*W
@@ -43,7 +55,7 @@ class CAAF:
 
         D_hat = torch.mm(torch.mm(self.D_norm,D_tilde),self.D_norm)
         W_hat = torch.mm(torch.mm(self.D_norm,W_tilde),self.D_norm)
-        Q_hat = torch.diag(alpha*torch.sum(V_tilde,axis=1))
+        Q_hat = torch.diag(alpha*torch.sum(V_tilde,axis=1))#.to(torch.float32)
         P_hat = D_hat - W_hat
 
         A = P_hat + Q_hat + torch.eye(n).cuda()*1e-6
@@ -74,7 +86,7 @@ class CAAF:
 
         # ranking step
         self.solve_f()
-        f = self.f.detach().cpu().numpy()
+        f = self.f.cpu().numpy()
 
         # suggestion step
         self.solve_v()
@@ -83,7 +95,7 @@ class CAAF:
   
     def select(self,num):
 
-        v = self.v.detach().cpu().numpy()
+        v = self.v.cpu().numpy()
         unlabeled_id = self.unlabeled_gallery_set
 
         # select samples with the lowest confidence
@@ -92,13 +104,20 @@ class CAAF:
 
         return fb_id
 
+    # update model parameters
     def update(self, fb_id, fb_score):
         self.labeled_gallery_set = np.concatenate((self.labeled_gallery_set,fb_id))
         self.unlabeled_gallery_set = np.setdiff1d(self.unlabeled_gallery_set, self.labeled_gallery_set,True)
 
         # labeled samples are endowed with high confidence
-        self.v = torch.zeros(self.y.shape).cuda()
+        if torch.cuda.is_available():
+            self.v = torch.zeros(self.y.shape).cuda()
+        else:
+            self.v = torch.zeros(self.y.shape)
         self.v[self.labeled_gallery_set] = 1
 
         n = len(fb_id)
-        self.y[fb_id] = torch.Tensor(fb_score).reshape((n,1)).cuda()
+        if torch.cuda.is_available():
+            self.y[fb_id] = torch.Tensor(fb_score).reshape((n,1)).cuda()
+        else:
+            self.v = torch.zeros(self.y.shape)
