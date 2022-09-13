@@ -14,11 +14,11 @@ Online relevance feedback (RF) is widely utilized in instance search (INS) tasks
 
 ## Example
 
-We provide the preprocessed data of Oxford5k, Holidays and CUHK03 on [GoogleDrive](https://drive.google.com/drive/folders/1jUczrybe9i5NeRJjpWxNBb1Yo5ry6dDH?usp=sharing) and [Baiduyun](https://pan.baidu.com/s/1eL1Pp3FhNzUxSQzbCY0cZw?pwd=d2t6), please put them (`*.mat`) into the `data/` folder.
+We provide the preprocessed data of Oxford5k, Holidays and CUHK03 on [GoogleDrive](https://drive.google.com/drive/folders/1jUczrybe9i5NeRJjpWxNBb1Yo5ry6dDH?usp=sharing) and [Baiduyun](https://pan.baidu.com/s/1eL1Pp3FhNzUxSQzbCY0cZw?pwd=d2t6), please put them (`*.mat`) into the `./data/` folder.
 
 You can test CAAF on Oxford5k with default settings using the following code:
 ```
-pip install requirements.txt
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu113
 cd code
 python main.py
 ```
