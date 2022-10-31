@@ -40,9 +40,6 @@ def evaluate(sim_score,qlabel,qcam,glabel,gcam):
         cmc = cmc + cmc_tmp
         ap += ap_tmp
 
-        if i==149:
-            print('ap %d = %.2f'%(i, float(ap_tmp)*100))
-
     cmc = cmc/len(qlabel)
     map = ap/len(qlabel)
 
