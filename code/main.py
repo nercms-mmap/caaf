@@ -1,13 +1,18 @@
+import torch
+import os
 import numpy as np
 import time
 import sys
-import os
+
+torch.set_default_tensor_type(torch.DoubleTensor)
+os.environ['CUDA_VISIBLE_DEVICES']='0'
+
 from preprocess import *
 from caaf import *
 from utils import *
-os.environ['CUDA_VISIBLE_DEVICES']='0'
 
-def run(params,dataset):
+
+def run(params, dataset):
 
     dist_mat = np.zeros((dataset.probe_num,dataset.gallery_num,params.t))
     time_cost = np.zeros((dataset.probe_num,params.t))
