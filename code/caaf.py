@@ -4,61 +4,51 @@ import torch
 torch.set_default_tensor_type(torch.DoubleTensor)
 
 class CAAF:
-    def __init__(self,W,alpha=1e-2):
-        torch.set_default_tensor_type(torch.DoubleTensor)
+    def __init__(self, W, alpha=1e-2, device=None):
         self.alpha = alpha # balancing parameter in manifold ranking loss
-        if torch.cuda.is_available():
-            self.W = torch.from_numpy(W).cuda()
-        else:
-            self.W = torch.from_numpy(W)
-        f = self.W[:,-1]
+        
+        if device is None:
+            device = torch.device(0) if torch.cuda.is_available() else torch.device('cpu') 
+            
+        self.W = torch.as_tensor(W, device=device)
+        f = self.W[:,-2:-1]
+        self.f = (f - torch.min(f))/(torch.max(f)-torch.min(f))
 
         # take the probe as a specially labeled sample
         m = W.shape[0]
-        f = f.reshape((m,1))
-        self.f = (f - torch.min(f))/(torch.max(f)-torch.min(f))
         self.labeled_gallery_set = np.array([m-1]) # probe index: m
         self.unlabeled_gallery_set = np.arange(m-1) # gallery index: 0 ~ m-1
-        if torch.cuda.is_available():
-            self.v = torch.zeros((m,1)).cuda()
-        else:
-            self.v = torch.zeros((m,1))
+        
+        self.v = torch.zeros_like(f)
         self.v[-1] = 1
-        if torch.cuda.is_available():
-            self.y = torch.zeros((m,1)).cuda()
-        else:
-            self.y = torch.zeros((m,1))
+        
+        self.y = torch.zeros_like(f)
         self.y[-1] = 1
 
-        # to accelerate inverse calculation
-        temp = 1/torch.sqrt(torch.sum(self.W,axis=1))
-        self.D_norm = torch.diag(temp)
+        self.D_norm = 1/torch.sqrt(torch.sum(self.W,axis=1, keepdim=True))
 
     def solve_f(self):
         W = self.W
-        n = len(self.y)
+        n = self.W.shape[0]
         y = self.y
         v = self.v
         labeled_gallery_set = self.labeled_gallery_set
 
         # enforce the ranking scores of labled samples approach their feedback scores
-        alpha = self.alpha*np.ones(n)
+        alpha = torch.empty_like(y)
+        alpha.fill_(self.alpha)
         alpha[labeled_gallery_set] = 1e6
-        if torch.cuda.is_available():
-            alpha = torch.from_numpy(alpha).cuda()
-        else:
-            alpha = torch.from_numpy(alpha)
-
-        V_tilde = torch.tile(v,(1,n)) + torch.tile(v.t(),(n,1))
+        
+        V_tilde = v + v.t()
         W_tilde = V_tilde*W
-        D_tilde = torch.diag(torch.sum(W_tilde,axis=1))
+        D_tilde = torch.sum(W_tilde,axis=1, keepdim=True)
+        D_hat = self.D_norm*self.D_norm*D_tilde
+        
+        W_hat = self.D_norm*self.D_norm.t()*W_tilde
+        Q_hat = torch.diag(alpha.squeeze()*torch.sum(V_tilde,axis=1))
+        P_hat = torch.diag(D_hat.squeeze()) - W_hat
 
-        D_hat = torch.mm(torch.mm(self.D_norm,D_tilde),self.D_norm)
-        W_hat = torch.mm(torch.mm(self.D_norm,W_tilde),self.D_norm)
-        Q_hat = torch.diag(alpha*torch.sum(V_tilde,axis=1))#.to(torch.float32)
-        P_hat = D_hat - W_hat
-
-        A = P_hat + Q_hat + torch.eye(n).cuda()*1e-6
+        A = P_hat + Q_hat + torch.eye(n, device=P_hat.device)*1e-6
         P = A + A.t()
         q = 2*torch.mm(Q_hat,y)
 
@@ -70,15 +60,13 @@ class CAAF:
         W = self.W
         f = self.f
         y = self.y
-        n = len(y)
 
         # calculate the confidence sore
-        f_norm = torch.mm(self.D_norm,f)
-        ff = torch.tile(f_norm.reshape((n,1)),(1,n)) - torch.tile(f_norm.t(),(n,1))
+        f_norm = self.D_norm*f
+        ff = f_norm - f_norm.t()
         smooth_loss = W*ff*ff
         fy = self.alpha*(f-y)*(f-y)
-        fy = fy.reshape((n,1))
-        fitting_loss = torch.tile(fy,(1,n)) + torch.tile(fy.t(),(n,1))
+        fitting_loss = fy + fy.t()
         loss_mat = smooth_loss + fitting_loss
         self.v = -torch.sum(loss_mat,axis=1)
 
@@ -86,38 +74,29 @@ class CAAF:
 
         # ranking step
         self.solve_f()
-        f = self.f.cpu().numpy()
-
         # suggestion step
         self.solve_v()
 
-        return f.reshape((len(f),))
+        return self.f.cpu().numpy().squeeze()
   
     def select(self,num):
 
-        v = self.v.cpu().numpy()
+        v = self.v
         unlabeled_id = self.unlabeled_gallery_set
 
         # select samples with the lowest confidence
-        ix = np.argsort(v[unlabeled_id]) 
-        fb_id = unlabeled_id[ix[0:num]]
+        ix = torch.argsort(v[unlabeled_id]) 
+        fb_id = unlabeled_id[ix[0:num].tolist()]
 
         return fb_id
 
     # update model parameters
     def update(self, fb_id, fb_score):
+
         self.labeled_gallery_set = np.concatenate((self.labeled_gallery_set,fb_id))
         self.unlabeled_gallery_set = np.setdiff1d(self.unlabeled_gallery_set, self.labeled_gallery_set,True)
 
         # labeled samples are endowed with high confidence
-        if torch.cuda.is_available():
-            self.v = torch.zeros(self.y.shape).cuda()
-        else:
-            self.v = torch.zeros(self.y.shape)
+        self.v = torch.zeros_like(self.y)
         self.v[self.labeled_gallery_set] = 1
-
-        n = len(fb_id)
-        if torch.cuda.is_available():
-            self.y[fb_id] = torch.Tensor(fb_score).reshape((n,1)).cuda()
-        else:
-            self.v = torch.zeros(self.y.shape)
+        self.y[fb_id] = torch.as_tensor(fb_score, device=self.y.device).unsqueeze(1)
