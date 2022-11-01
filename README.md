@@ -42,16 +42,12 @@ params = init_params(dataset=dataset,t=5,q=5,k=300,alpha=1e-2,method="CAAF")
 
 If you find this repository useful, please consider giving ⭐ or citing:
 
-<!--正式发表后修改bibtex-->
-
 ```
-@article{DBLP:journals/corr/abs-2110-12255,
-  author    = {Yue Zhang and
-               Chao Liang and
-               Longxiang Jiang},
-  title     = {Confidence-Aware Active Feedback for Efficient Instance Search},
-  journal   = {CoRR},
-  volume    = {abs/2110.12255},
-  year      = {2021}
+@article{zhang2022confidence,
+  title={Confidence-Aware Active Feedback for Interactive Instance Search},
+  author={Zhang, Yue and Liang, Chao and Jiang, Longxiang},
+  journal={IEEE Transactions on Multimedia},
+  year={2022},
+  publisher={IEEE}
 }
 ```
