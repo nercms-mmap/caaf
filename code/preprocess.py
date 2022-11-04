@@ -62,6 +62,7 @@ def select_top_k(dataset,k,i):
     curr_gallery_feat = gallery_feat[idx,:]
     node_feat = np.vstack((curr_gallery_feat,probe_feat))
     W = np.dot(node_feat,node_feat.T)
+    W[W<0] = 0
 
     return idx, init_rank, W, node_feat
 
